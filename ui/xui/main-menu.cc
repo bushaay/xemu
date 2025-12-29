@@ -842,6 +842,15 @@ void MainMenuAudioView::Draw()
     Toggle("Real-time DSP processing", &g_config.audio.use_dsp,
            "Enable improved audio accuracy (experimental)");
 
+    SectionTitle("Audio Debugging");
+    Toggle("Enable audio logging", &g_config.audio.debug.enable_logging,
+           "Log audio events to console for debugging (requires restart)");
+    Toggle("Detect audio loops", &g_config.audio.debug.detect_audio_loops,
+           "Detect and warn about potential audio looping issues");
+    Toggle("Log buffer underruns", &g_config.audio.debug.log_buffer_underruns,
+           "Log buffer underrun events that may cause audio glitches");
+    Toggle("Log sample rate changes", &g_config.audio.debug.log_sample_rate_changes,
+           "Log when audio sample rates change");
 }
 
 NetworkInterface::NetworkInterface(pcap_if_t *pcap_desc, char *_friendlyname)

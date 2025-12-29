@@ -23,6 +23,7 @@
 #include "viewport-manager.hh"
 #include "widgets.hh"
 #include "../xemu-settings.h"
+#include <cmath>
 
 #define MAX_VOICES 256
 
