@@ -110,6 +110,7 @@ extern MCPXAPUState *g_state; // Used via debug handlers
 extern struct McpxApuDebug g_dbg, g_dbg_cache;
 extern int g_dbg_voice_monitor;
 extern uint64_t g_dbg_muted_voices[4];
+extern bool g_dbg_logging_enabled;
 
 void mcpx_debug_begin_frame(void);
 void mcpx_debug_end_frame(void);
