@@ -24,6 +24,7 @@
 struct McpxApuDebug g_dbg, g_dbg_cache;
 int g_dbg_voice_monitor = -1;
 uint64_t g_dbg_muted_voices[4];
+bool g_dbg_logging_enabled = false;
 
 const struct McpxApuDebug *mcpx_apu_get_debug_info(void)
 {
@@ -83,4 +84,37 @@ void mcpx_apu_debug_toggle_mute(uint16_t v)
 {
     assert(v < MCPX_HW_MAX_VOICES);
     g_dbg_muted_voices[v / 64] ^= (1LL << (v % 64));
+}
+
+void mcpx_apu_debug_reset_stats(void)
+{
+    memset(&g_dbg.stats, 0, sizeof(g_dbg.stats));
+}
+
+void mcpx_apu_debug_set_logging_enabled(bool enable)
+{
+    g_dbg_logging_enabled = enable;
+}
+
+bool mcpx_apu_debug_get_logging_enabled(void)
+{
+    return g_dbg_logging_enabled;
+}
+
+void mcpx_apu_debug_mute_all_except(uint16_t v)
+{
+    // Mute all voices except the specified one
+    for (int i = 0; i < 4; i++) {
+        g_dbg_muted_voices[i] = ~0ULL;
+    }
+    if (v < MCPX_HW_MAX_VOICES) {
+        g_dbg_muted_voices[v / 64] &= ~(1LL << (v % 64));
+    }
+}
+
+void mcpx_apu_debug_unmute_all(void)
+{
+    for (int i = 0; i < 4; i++) {
+        g_dbg_muted_voices[i] = 0;
+    }
 }

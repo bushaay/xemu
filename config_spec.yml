@@ -320,6 +320,14 @@ audio:
   volume_limit:
     type: number
     default: 1
+  debug:
+    enable_logging: bool
+    log_buffer_underruns: bool
+    log_sample_rate_changes: bool
+    detect_audio_loops: bool
+    visualize_waveforms: bool
+    capture_to_file: bool
+    show_mixer_analysis: bool
 
 net:
   enable: bool

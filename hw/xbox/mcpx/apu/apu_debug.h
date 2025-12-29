@@ -24,6 +24,8 @@
 #include <stdint.h>
 
 #define MAX_VOICE_WORKERS 16
+#define AUDIO_DEBUG_HISTORY_SIZE 512
+#define AUDIO_DEBUG_WAVEFORM_SIZE 256
 
 typedef enum McpxApuDebugMonitorPoint {
     MCPX_APU_DEBUG_MON_AC97,
@@ -52,6 +54,15 @@ struct McpxApuDebugVoice
     unsigned int samples_per_block;
     uint32_t ebo, cbo, lbo, ba;
     float rate;
+    
+    // Enhanced debugging info for issue #904
+    uint32_t last_ba;          // Last buffer address for loop detection
+    uint32_t loop_count;       // Number of times buffer looped
+    uint64_t total_samples;    // Total samples processed
+    float peak_amplitude_l;    // Peak amplitude left channel
+    float peak_amplitude_r;    // Peak amplitude right channel
+    float avg_amplitude_l;     // Average amplitude left channel
+    float avg_amplitude_r;     // Average amplitude right channel
 };
 
 struct McpxApuDebugVp
@@ -70,6 +81,33 @@ struct McpxApuDebugDsp
     int cycles;
 };
 
+struct McpxApuDebugAudioStats
+{
+    // Buffer health
+    uint32_t buffer_underruns;
+    uint32_t buffer_overruns;
+    
+    // Sample rate tracking
+    float detected_sample_rate;
+    bool sample_rate_changed;
+    
+    // Output monitoring
+    float output_peak_l;
+    float output_peak_r;
+    float output_avg_l;
+    float output_avg_r;
+    
+    // Issue #904 specific tracking
+    bool potential_loop_detected;    // Audio looping detection
+    bool potential_buzzing_detected; // Buzzing/hissing detection
+    uint32_t active_voice_count;     // Number of active voices
+    
+    // Waveform visualization data (ring buffer)
+    float waveform_l[AUDIO_DEBUG_WAVEFORM_SIZE];
+    float waveform_r[AUDIO_DEBUG_WAVEFORM_SIZE];
+    int waveform_idx;
+};
+
 struct McpxApuDebug
 {
     struct McpxApuDebugVp vp;
@@ -77,6 +115,9 @@ struct McpxApuDebug
     int frames_processed;
     float utilization;
     bool gp_realtime, ep_realtime;
+    
+    // Enhanced debugging statistics
+    struct McpxApuDebugAudioStats stats;
 };
 
 #ifdef __cplusplus
@@ -92,6 +133,13 @@ void mcpx_apu_debug_toggle_mute(uint16_t v);
 bool mcpx_apu_debug_is_muted(uint16_t v);
 void mcpx_apu_debug_set_gp_realtime_enabled(bool enable);
 void mcpx_apu_debug_set_ep_realtime_enabled(bool enable);
+
+// Enhanced debugging functions for issue #904
+void mcpx_apu_debug_reset_stats(void);
+void mcpx_apu_debug_set_logging_enabled(bool enable);
+bool mcpx_apu_debug_get_logging_enabled(void);
+void mcpx_apu_debug_mute_all_except(uint16_t v);
+void mcpx_apu_debug_unmute_all(void);
 
 #ifdef __cplusplus
 }

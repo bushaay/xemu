@@ -22,6 +22,11 @@ class DebugApuWindow
 {
 public:
     bool m_is_open;
+    bool m_show_advanced;
+    bool m_show_waveform;
+    bool m_show_voice_details;
+    bool m_show_mixer_analysis;
+    
     DebugApuWindow();
     void Draw();
 };

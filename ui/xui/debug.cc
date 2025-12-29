@@ -21,10 +21,14 @@
 #include "misc.hh"
 #include "font-manager.hh"
 #include "viewport-manager.hh"
+#include "widgets.hh"
+#include "../xemu-settings.h"
+#include <cmath>
 
 #define MAX_VOICES 256
 
-DebugApuWindow::DebugApuWindow() : m_is_open(false)
+DebugApuWindow::DebugApuWindow() : m_is_open(false), m_show_advanced(false),
+    m_show_waveform(false), m_show_voice_details(false), m_show_mixer_analysis(false)
 {
 }
 
@@ -245,6 +249,164 @@ void DebugApuWindow::Draw()
 
     ImGui::PopFont();
     ImGui::Columns(1);
+    
+    // Enhanced Audio Debugging Suite for Issue #904
+    ImGui::Separator();
+    ImGui::Text("Enhanced Audio Debugging Suite");
+    
+    if (ImGui::CollapsingHeader("Audio Statistics & Health", ImGuiTreeNodeFlags_DefaultOpen)) {
+        ImGui::Indent();
+        
+        // Buffer health monitoring
+        ImGui::Text("Buffer Status:");
+        ImGui::BulletText("Underruns: %u", dbg->stats.buffer_underruns);
+        ImGui::BulletText("Overruns:  %u", dbg->stats.buffer_overruns);
+        
+        // Active voice monitoring
+        ImGui::Text("Voice Activity:");
+        ImGui::BulletText("Active Voices: %u / 256", dbg->stats.active_voice_count);
+        
+        // Output level monitoring
+        ImGui::Text("Output Levels:");
+        ImGui::BulletText("Peak L: %.2f dB, R: %.2f dB", 
+            20.0f * log10f(dbg->stats.output_peak_l + 0.0001f),
+            20.0f * log10f(dbg->stats.output_peak_r + 0.0001f));
+        ImGui::BulletText("Avg  L: %.2f dB, R: %.2f dB", 
+            20.0f * log10f(dbg->stats.output_avg_l + 0.0001f),
+            20.0f * log10f(dbg->stats.output_avg_r + 0.0001f));
+        
+        // Issue #904 specific warnings
+        if (dbg->stats.potential_loop_detected) {
+            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.4f, 0.0f, 1.0f));
+            ImGui::BulletText("WARNING: Potential audio loop detected!");
+            ImGui::PopStyleColor();
+        }
+        
+        if (dbg->stats.potential_buzzing_detected) {
+            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.4f, 0.0f, 1.0f));
+            ImGui::BulletText("WARNING: Potential buzzing/hissing detected!");
+            ImGui::PopStyleColor();
+        }
+        
+        if (dbg->stats.sample_rate_changed) {
+            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.4f, 0.8f, 1.0f, 1.0f));
+            ImGui::BulletText("Sample rate changed to: %.0f Hz", dbg->stats.detected_sample_rate);
+            ImGui::PopStyleColor();
+        }
+        
+        if (ImGui::Button("Reset Statistics")) {
+            mcpx_apu_debug_reset_stats();
+        }
+        
+        ImGui::Unindent();
+    }
+    
+    if (ImGui::CollapsingHeader("Audio Waveform Visualization")) {
+        ImGui::Indent();
+        
+        m_show_waveform = true;
+        
+        // Plot waveform data
+        static ImPlotAxisFlags wf_axis = ImPlotAxisFlags_NoTickLabels | ImPlotAxisFlags_NoGridLines;
+        
+        if (ImPlot::BeginPlot("##AudioWaveform", ImVec2(-1, 150*g_viewport_mgr.m_scale))) {
+            ImPlot::SetupAxes("Time", "Amplitude", wf_axis, ImPlotAxisFlags_Lock);
+            ImPlot::SetupAxesLimits(0, AUDIO_DEBUG_WAVEFORM_SIZE, -1.2, 1.2, ImPlotCond_Always);
+            
+            // Plot left and right channels
+            ImPlot::PushStyleColor(ImPlotCol_Line, ImVec4(0.2f, 0.8f, 0.2f, 1.0f));
+            ImPlot::PlotLine("Left", dbg->stats.waveform_l, AUDIO_DEBUG_WAVEFORM_SIZE);
+            ImPlot::PopStyleColor();
+            
+            ImPlot::PushStyleColor(ImPlotCol_Line, ImVec4(0.8f, 0.2f, 0.2f, 1.0f));
+            ImPlot::PlotLine("Right", dbg->stats.waveform_r, AUDIO_DEBUG_WAVEFORM_SIZE);
+            ImPlot::PopStyleColor();
+            
+            ImPlot::EndPlot();
+        }
+        
+        ImGui::Unindent();
+    }
+    
+    if (ImGui::CollapsingHeader("Per-Voice Analysis")) {
+        ImGui::Indent();
+        
+        m_show_voice_details = true;
+        
+        ImGui::BeginChild("VoiceScroll", ImVec2(0, 200*g_viewport_mgr.m_scale), true);
+        
+        ImGui::PushFont(g_font_mgr.m_fixed_width_font);
+        ImGui::Text("V#  | Active | Rate(Hz) | Loop | Samples  | Peak(L/R) | Avg(L/R)");
+        ImGui::Separator();
+        
+        for (int i = 0; i < MAX_VOICES; i++) {
+            if (!dbg->vp.v[i].active) continue;
+            
+            const struct McpxApuDebugVoice *v = &dbg->vp.v[i];
+            
+            ImGui::Text("%3d | %-6s | %7d  | %4u | %8llu | %.2f/%.2f | %.2f/%.2f",
+                i,
+                v->paused ? "Paused" : "Active",
+                (int)(48000.0/v->rate),
+                v->loop_count,
+                (unsigned long long)v->total_samples,
+                v->peak_amplitude_l, v->peak_amplitude_r,
+                v->avg_amplitude_l, v->avg_amplitude_r);
+            
+            // Highlight voices with potential issues
+            if (v->loop_count > 100) {
+                ImGui::SameLine();
+                ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.4f, 0.0f, 1.0f));
+                ImGui::Text(" <-- High loop count!");
+                ImGui::PopStyleColor();
+            }
+        }
+        
+        ImGui::PopFont();
+        ImGui::EndChild();
+        
+        ImGui::Unindent();
+    }
+    
+    if (ImGui::CollapsingHeader("Debugging Tools")) {
+        ImGui::Indent();
+        
+        ImGui::Text("Voice Isolation:");
+        ImGui::SameLine();
+        if (ImGui::Button("Unmute All")) {
+            mcpx_apu_debug_unmute_all();
+        }
+        
+        ImGui::Text("Debug Logging:");
+        bool logging = mcpx_apu_debug_get_logging_enabled();
+        if (ImGui::Checkbox("Enable Audio Logging", &logging)) {
+            mcpx_apu_debug_set_logging_enabled(logging);
+        }
+        ImGui::SameLine();
+        HelpMarker("Log audio events to console for debugging");
+        
+        ImGui::Text("Configuration:");
+        ImGui::Checkbox("Log Buffer Underruns", &g_config.audio.debug.log_buffer_underruns);
+        ImGui::Checkbox("Log Sample Rate Changes", &g_config.audio.debug.log_sample_rate_changes);
+        ImGui::Checkbox("Detect Audio Loops", &g_config.audio.debug.detect_audio_loops);
+        ImGui::Checkbox("Show Mixer Analysis", &g_config.audio.debug.show_mixer_analysis);
+        
+        ImGui::Unindent();
+    }
+    
+    if (ImGui::CollapsingHeader("Issue #904 Notes")) {
+        ImGui::Indent();
+        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.8f, 0.8f, 0.2f, 1.0f));
+        ImGui::TextWrapped("This debugging suite helps diagnose common audio issues:");
+        ImGui::PopStyleColor();
+        ImGui::BulletText("Audio Looping - Check loop counts in Per-Voice Analysis");
+        ImGui::BulletText("Buzzing/Hissing - Monitor waveform for abnormal patterns");
+        ImGui::BulletText("Sample Rate Issues - Watch for sample rate change notifications");
+        ImGui::BulletText("Mixing Issues - Use voice isolation to identify problem voices");
+        ImGui::BulletText("Buffer Issues - Monitor underruns/overruns in statistics");
+        ImGui::Unindent();
+    }
+    
     ImGui::End();
 }
 
